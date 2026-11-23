@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExamDesk - Math Exam</title>
+<style>
+  body{font-family:Arial,sans-serif;background:#f3f6fb;margin:0;padding:16px}
+  .box{max-width:600px;margin:auto;background:#fff;padding:16px;border-radius:10px}
+  h2{color:#1f4e9c;margin-top:0}
+  input[type=text]{width:100%;padding:10px;margin:6px 0;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
+  .q{background:#eef3fb;padding:10px;border-radius:8px;margin:10px 0}
+  label{display:block;padding:8px;margin:4px 0;background:#fff;border-radius:6px;border:1px solid #ccd}
+  button{padding:12px;border:0;border-radius:6px;background:#1f4e9c;color:#fff;font-size:16px;width:100%;margin-top:8px}
+  #bar{position:sticky;top:0;background:#1f4e9c;color:#fff;padding:10px;border-radius:8px;
+       display:flex;justify-content:space-between;font-weight:bold;margin-bottom:10px}
+  #result{text-align:center;font-size:18px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="box">
+
+  <div id="start">
+    <h2>ExamDesk - Math Exam</h2>
+    <p>10 MCQs | 10 minutes</p>
+    <input type="text" id="name" placeholder="Full name">
+    <input type="text" id="roll" placeholder="Roll number">
+    <button id="startBtn">Start Exam</button>
+  </div>
+
+  <div id="exam" class="hide">
+    <div id="bar"><span id="who"></span><span id="timer">10:00</span></div>
+    <div id="questions"></div>
+    <button id="submitBtn">Submit Exam</button>
+  </div>
+
+  <div id="result"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAEYd0wGLfhu4Z0DJT0z-zvjFHxuNa8hTI",
+  authDomain: "examdesk-website.firebaseapp.com",
+  projectId: "examdesk-website",
+  storageBucket: "examdesk-website.firebasestorage.app",
+  messagingSenderId: "1051599004099",
+  appId: "1:1051599004099:web:25f5980ad3c08bef7cdd76",
+  measurementId: "G-PYZ87RQ37H"
+};
+
+const db = getFirestore(initializeApp(firebaseConfig));
+
+const questions = [
+  { t: "d/dx (x³) = ?", o: ["x²", "3x²", "3x", "x³"], c: 1 },
+  { t: "∫ 2x dx = ?", o: ["x² + C", "2x² + C", "x + C", "2 + C"], c: 0 },
+  { t: "sin²θ + cos²θ = ?", o: ["0", "2", "1", "tanθ"], c: 2 },
+  { t: "Roots of x² − 5x + 6 = 0 are:", o: ["1 and 6", "2 and 3", "−2 and −3", "5 and 1"], c: 1 },
+  { t: "Determinant of the matrix [[2, 3], [1, 4]] is:", o: ["11", "5", "8", "3"], c: 1 },
+  { t: "lim (x→0) sin x / x = ?", o: ["0", "∞", "1", "−1"], c: 2 },
+  { t: "Sum of the angles of a triangle is:", o: ["90°", "180°", "270°", "360°"], c: 1 },
+  { t: "log₁₀(1000) = ?", o: ["2", "3", "10", "100"], c: 1 },
+  { t: "d/dx (eˣ) = ?", o: ["xeˣ⁻¹", "eˣ", "1", "ln x"], c: 1 },
+  { t: "In how many ways can 3 different letters be arranged?", o: ["3", "6", "9", "12"], c: 1 }
+];
+
+const $ = id => document.getElementById(id);
+let student = {}, timerId, submitted = false;
+
+$("startBtn").onclick = () => {
+  const name = $("name").value.trim();
+  const roll = $("roll").value.trim();
+  if (!name || !roll) { alert("Please enter your name and roll number."); return; }
+  student = { name, roll };
+  $("start").classList.add("hide");
+  $("exam").classList.remove("hide");
+  $("who").textContent = name + " (" + roll + ")";
+  render();
+  startTimer(10 * 60);
+};
+
+function render() {
+  const box = $("questions");
+  questions.forEach((q, i) => {
+    const div = document.createElement("div");
+    div.className = "q";
+    const title = document.createElement("b");
+    title.textContent = "Q" + (i + 1) + ". " + q.t;
+    div.appendChild(title);
+    q.o.forEach((opt, j) => {
+      const lab = document.createElement("label");
+      const r = document.createElement("input");
+      r.type = "radio"; r.name = "q" + i; r.value = j;
+      lab.appendChild(r);
+      lab.appendChild(document.createTextNode(" " + opt));
+      div.appendChild(lab);
+    });
+    box.appendChild(div);
+  });
+}
+
+function startTimer(seconds) {
+  const end = Date.now() + seconds * 1000;
+  timerId = setInterval(() => {
+    const left = Math.max(0, Math.round((end - Date.now()) / 1000));
+    $("timer").textContent =
+      String(Math.floor(left / 60)).padStart(2, "0") + ":" + String(left % 60).padStart(2, "0");
+    if (left === 0) submit(true);
+  }, 500);
+}
+
+$("submitBtn").onclick = () => submit(false);
+
+async function submit(timeUp) {
+  if (submitted) return;
+  submitted = true;
+  clearInterval(timerId);
+
+  let score = 0;
+  questions.forEach((q, i) => {
+    const sel = document.querySelector('input[name="q' + i + '"]:checked');
+    if (sel && Number(sel.value) === q.c) score++;
+  });
+
+  $("exam").classList.add("hide");
+  const res = $("result");
+  res.textContent = "Saving your result...";
+
+  try {
+    await addDoc(collection(db, "results"), {
+      name: student.name,
+      roll: student.roll,
+      subject: "Math",
+      score: score,
+      total: questions.length,
+      timeUp: timeUp,
+      submittedAt: serverTimestamp()
+    });
+    res.innerHTML = "<h2>" + (timeUp ? "Time is up!" : "Exam submitted!") + "</h2>" +
+      "<p>Score: <b>" + score + " / " + questions.length + "</b></p><p>Result saved.</p>";
+  } catch (e) {
+    res.innerHTML = "<h2>Score: " + score + " / " + questions.length + "</h2>" +
+      "<p style='color:red'>Result could not be saved: " + e.message + "</p>";
+  }
+}
+</script>
+</body>
+</html>
