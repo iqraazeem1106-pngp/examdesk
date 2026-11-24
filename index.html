@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExamDesk</title>
+<style>
+  body{font-family:Arial,sans-serif;background:#f3f6fb;margin:0;padding:16px}
+  .box{max-width:600px;margin:auto;background:#fff;padding:16px;border-radius:10px}
+  h2{color:#1f4e9c;margin-top:0}
+  input[type=text],input[type=password],select{width:100%;padding:10px;margin:6px 0;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
+  .q{background:#eef3fb;padding:10px;border-radius:8px;margin:10px 0}
+  label{display:block;padding:8px;margin:4px 0;background:#fff;border-radius:6px;border:1px solid #ccd}
+  button{padding:12px;border:0;border-radius:6px;background:#1f4e9c;color:#fff;font-size:16px;width:100%;margin-top:8px}
+  button.alt{background:#2e8b57}
+  button.grey{background:#777}
+  button.del{background:#c0392b;padding:6px;width:auto;font-size:14px;float:right;margin:0}
+  #bar{position:sticky;top:0;background:#1f4e9c;color:#fff;padding:10px;border-radius:8px;
+       display:flex;justify-content:space-between;font-weight:bold;margin-bottom:10px}
+  #result{text-align:center;font-size:18px}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}
+  td,th{border:1px solid #ccd;padding:6px;text-align:left}
+  .item{background:#eef3fb;padding:10px;border-radius:8px;margin:6px 0;overflow:hidden}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="box">
+
+  <div id="home">
+    <h2>ExamDesk</h2>
+    <p>Online Examination System</p>
+    <button id="goStudent">I am a Student</button>
+    <button id="goTeacher" class="alt">I am a Teacher</button>
+  </div>
+
+  <div id="start" class="hide">
+    <h2>Student</h2>
+    <p>10 MCQs per paper | 10 minutes per paper</p>
+    <input type="text" id="name" placeholder="Full name">
+    <input type="text" id="roll" placeholder="Roll number">
+    <button id="startBtn">Start Exam</button>
+    <button id="stBack" class="grey">Back</button>
+  </div>
+
+  <div id="exam" class="hide">
+    <div id="bar"><span id="paperTitle"></span><span id="timer">10:00</span></div>
+    <p id="who"></p>
+    <div id="questions"></div>
+    <button id="submitBtn">Submit Paper</button>
+  </div>
+
+  <div id="tLogin" class="hide">
+    <h2>Teacher Login</h2>
+    <input type="password" id="tPass" placeholder="Teacher password">
+    <button id="tLoginBtn">Login</button>
+    <button id="tlBack" class="grey">Back</button>
+  </div>
+
+  <div id="teacher" class="hide">
+    <h2>Create Paper</h2>
+    <input type="text" id="tSubject" placeholder="Subject / Paper title">
+    <div id="tQuestions"></div>
+    <button id="addQ" class="alt">+ Add Question</button>
+    <button id="savePaper">Save Paper</button>
+    <div id="tMsg"></div>
+
+    <h2 style="margin-top:24px">Papers created by teacher</h2>
+    <div id="tList">Loading...</div>
+
+    <h2 style="margin-top:24px">Results</h2>
+    <button id="showRes" class="alt">Load Results</button>
+    <div id="tResults"></div>
+
+    <button id="tLogout" class="grey">Logout</button>
+  </div>
+
+  <div id="result"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, where, orderBy, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAEYd0wGLfhu4Z0DJT0z-zvjFHxuNa8hTI",
+  authDomain: "examdesk-website.firebaseapp.com",
+  projectId: "examdesk-website",
+  storageBucket: "examdesk-website.firebasestorage.app",
+  messagingSenderId: "1051599004099",
+  appId: "1:1051599004099:web:25f5980ad3c08bef7cdd76",
+  measurementId: "G-PYZ87RQ37H"
+};
+
+const TEACHER_PASSWORD = "teacher123";   // isay apne password se badal lo
+const PAPER_SECONDS = 10 * 60;
+
+const db = getFirestore(initializeApp(firebaseConfig));
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const builtIn = [
+  {
+    id: "builtin-math", subject: "Mathematics",
+    questions: [
+      { t: "d/dx (x³) = ?", o: ["x²", "3x²", "3x", "x³"], c: 1 },
+      { t: "∫ 2x dx = ?", o: ["x² + C", "2x² + C", "x + C", "2 + C"], c: 0 },
+      { t: "sin²θ + cos²θ = ?", o: ["0", "2", "1", "tanθ"], c: 2 },
+      { t: "Roots of x² − 5x + 6 = 0 are:", o: ["1 and 6", "2 and 3", "−2 and −3", "5 and 1"], c: 1 },
+      { t: "Determinant of the matrix [[2, 3], [1, 4]] is:", o: ["11", "5", "8", "3"], c: 1 },
+      { t: "lim (x→0) sin x / x = ?", o: ["0", "∞", "1", "−1"], c: 2 },
+      { t: "Sum of the angles of a triangle is:", o: ["90°", "180°", "270°", "360°"], c: 1 },
+      { t: "log₁₀(1000) = ?", o: ["2", "3", "10", "100"], c: 1 },
+      { t: "d/dx (eˣ) = ?", o: ["xeˣ⁻¹", "eˣ", "1", "ln x"], c: 1 },
+      { t: "In how many ways can 3 different letters be arranged?", o: ["3", "6", "9", "12"], c: 1 }
+    ]
+  },
+  {
+    id: "builtin-ml", subject: "Machine Learning",
+    questions: [
+      { t: "Which of these is a supervised learning task?", o: ["Clustering", "Classification", "Dimensionality reduction", "Association rules"], c: 1 },
+      { t: "Overfitting means the model:", o: ["Performs well on training data but poorly on new data", "Performs poorly on all data", "Has too few parameters", "Trains very fast"], c: 0 },
+      { t: "Which algorithm uses the sigmoid function for classification?", o: ["Linear regression", "Logistic regression", "K-means", "PCA"], c: 1 },
+      { t: "K-means is an example of:", o: ["Supervised learning", "Unsupervised learning", "Reinforcement learning", "Deep learning only"], c: 1 },
+      { t: "Which is a common loss function for regression?", o: ["Mean Squared Error", "Accuracy", "Confusion matrix", "Entropy of labels"], c: 0 },
+      { t: "Gradient descent is used to:", o: ["Increase the dataset size", "Minimize a loss function", "Remove outliers", "Plot graphs"], c: 1 },
+      { t: "Why do we split data into training and test sets?", o: ["To make training faster", "To evaluate the model on unseen data", "To reduce the number of features", "To remove noise"], c: 1 },
+      { t: "Which of these is NOT a type of machine learning?", o: ["Supervised learning", "Unsupervised learning", "Reinforcement learning", "Compiled learning"], c: 3 },
+      { t: "In a confusion matrix, TP stands for:", o: ["Total Prediction", "True Positive", "Test Probability", "Train Pass"], c: 1 },
+      { t: "The ReLU activation function is defined as:", o: ["max(0, x)", "1 / (1 + e⁻ˣ)", "tanh(x)", "x²"], c: 0 }
+    ]
+  },
+  {
+    id: "builtin-crypto", subject: "Cryptography",
+    questions: [
+      { t: "In a Caesar cipher with shift 3, the letter A becomes:", o: ["B", "C", "D", "E"], c: 2 },
+      { t: "AES is a:", o: ["Symmetric key algorithm", "Public key algorithm", "Hash function", "Digital signature scheme"], c: 0 },
+      { t: "The security of RSA depends on the difficulty of:", o: ["Adding large numbers", "Factoring large integers", "Sorting numbers", "Finding square roots of small numbers"], c: 1 },
+      { t: "Which of these is a hash function?", o: ["RSA", "AES", "SHA-256", "Caesar"], c: 2 },
+      { t: "In public key cryptography, a message encrypted with the public key is decrypted with:", o: ["The same public key", "The receiver's private key", "The sender's private key", "No key"], c: 1 },
+      { t: "gcd(12, 18) = ?", o: ["2", "3", "6", "12"], c: 2 },
+      { t: "17 mod 5 = ?", o: ["1", "2", "3", "4"], c: 1 },
+      { t: "A digital signature mainly provides:", o: ["Compression", "Authentication and integrity", "Faster internet", "Only confidentiality"], c: 1 },
+      { t: "How many keys are shared between two parties in symmetric encryption?", o: ["One shared key", "Two public keys", "Four keys", "No keys"], c: 0 },
+      { t: "Euler's totient φ(7) = ?", o: ["5", "6", "7", "8"], c: 1 }
+    ]
+  }
+];
+
+const SECTIONS = ["home", "start", "exam", "tLogin", "teacher"];
+function show(id) {
+  SECTIONS.forEach(x => $(x).classList.add("hide"));
+  if (id) $(id).classList.remove("hide");
+  $("result").innerHTML = "";
+}
+
+$("goStudent").onclick = () => show("start");
+$("goTeacher").onclick = () => show("tLogin");
+$("stBack").onclick = () => show("home");
+$("tlBack").onclick = () => show("home");
+$("tLogout").onclick = () => { $("tPass").value = ""; show("home"); };
+
+/* ===================== STUDENT ===================== */
+let student = {}, papers = [], current = 0, timerId, submitted = false;
+const finalScores = [];
+
+$("startBtn").onclick = async () => {
+  const name = $("name").value.trim();
+  const roll = $("roll").value.trim().toUpperCase();
+  if (!name || !roll) { alert("Please enter your name and roll number."); return; }
+  student = { name, roll };
+  $("startBtn").disabled = true;
+
+  try {
+    const ps = await getDocs(query(collection(db, "papers"), orderBy("createdAt", "asc")));
+    const custom = ps.docs.map(d => ({ id: d.id, ...d.data() }));
+    const rs = await getDocs(query(collection(db, "results"), where("roll", "==", roll)));
+    const done = new Set(rs.docs.map(d => d.data().paperId).filter(Boolean));
+    papers = builtIn.concat(custom).filter(p => !done.has(p.id));
+  } catch (e) {
+    alert("Could not load papers: " + e.message);
+    $("startBtn").disabled = false;
+    return;
+  }
+  $("startBtn").disabled = false;
+
+  if (papers.length === 0) {
+    show(null);
+    $("result").innerHTML = "<h2>No new papers</h2><p>You have completed all available papers.</p>";
+    return;
+  }
+  current = 0;
+  finalScores.length = 0;
+  startPaper();
+};
+
+function startPaper() {
+  submitted = false;
+  const p = papers[current];
+  show("exam");
+  $("paperTitle").textContent = "Paper " + (current + 1) + "/" + papers.length + ": " + p.subject;
+  $("who").textContent = student.name + " (" + student.roll + ")";
+  render(p.questions);
+  startTimer(PAPER_SECONDS);
+  window.scrollTo(0, 0);
+}
+
+function render(questions) {
+  const box = $("questions");
+  box.innerHTML = "";
+  questions.forEach((q, i) => {
+    const div = document.createElement("div");
+    div.className = "q";
+    const title = document.createElement("b");
+    title.textContent = "Q" + (i + 1) + ". " + q.t;
+    div.appendChild(title);
+    q.o.forEach((opt, j) => {
+      const lab = document.createElement("label");
+      const r = document.createElement("input");
+      r.type = "radio"; r.name = "q" + i; r.value = j;
+      lab.appendChild(r);
+      lab.appendChild(document.createTextNode(" " + opt));
+      div.appendChild(lab);
+    });
+    box.appendChild(div);
+  });
+}
+
+function startTimer(seconds) {
+  clearInterval(timerId);
+  const end = Date.now() + seconds * 1000;
+  timerId = setInterval(() => {
+    const left = Math.max(0, Math.round((end - Date.now()) / 1000));
+    $("timer").textContent =
+      String(Math.floor(left / 60)).padStart(2, "0") + ":" + String(left % 60).padStart(2, "0");
+    if (left === 0) submit(true);
+  }, 500);
+}
+
+$("submitBtn").onclick = () => submit(false);
+
+async function submit(timeUp) {
+  if (submitted) return;
+  submitted = true;
+  clearInterval(timerId);
+
+  const p = papers[current];
+  let score = 0;
+  p.questions.forEach((q, i) => {
+    const sel = document.querySelector('input[name="q' + i + '"]:checked');
+    if (sel && Number(sel.value) === q.c) score++;
+  });
+  const total = p.questions.length;
+  finalScores.push({ subject: p.subject, score, total });
+
+  show(null);
+  const res = $("result");
+  res.textContent = "Saving your result...";
+
+  let saveMsg = "Result saved.";
+  try {
+    await addDoc(collection(db, "results"), {
+      name: student.name,
+      roll: student.roll,
+      subject: p.subject,
+      paperId: p.id,
+      score: score,
+      total: total,
+      timeUp: timeUp,
+      submittedAt: serverTimestamp()
+    });
+  } catch (e) {
+    saveMsg = "Result could not be saved: " + e.message;
+  }
+
+  const head = "<h2>" + (timeUp ? "Time is up! " : "Paper submitted! ") + esc(p.subject) + "</h2>" +
+    "<p>Score: <b>" + score + " / " + total + "</b></p><p>" + esc(saveMsg) + "</p>";
+
+  if (current + 1 >= papers.length) {
+    let rows = "";
+    finalScores.forEach(s => {
+      rows += "<tr><td>" + esc(s.subject) + "</td><td>" + s.score + " / " + s.total + "</td></tr>";
+    });
+    res.innerHTML = head + "<h2>All papers completed</h2><table><tr><th>Paper</th><th>Score</th></tr>" +
+      rows + "</table>";
+    return;
+  }
+
+  let sec = 5;
+  const next = papers[current + 1].subject;
+  const cd = setInterval(tick, 1000);
+  function tick() {
+    res.innerHTML = head + "<p>Next paper (" + esc(next) + ") starts in " + sec + "...</p>";
+    if (sec-- === 0) { clearInterval(cd); current++; startPaper(); }
+  }
+  tick();
+}
+
+/* ===================== TEACHER ===================== */
+let qCount = 0;
+
+$("tLoginBtn").onclick = () => {
+  if ($("tPass").value !== TEACHER_PASSWORD) { alert("Wrong password."); return; }
+  show("teacher");
+  $("tQuestions").innerHTML = "";
+  qCount = 0;
+  addQuestion();
+  loadList();
+};
+
+function addQuestion() {
+  qCount++;
+  const div = document.createElement("div");
+  div.className = "q";
+  div.innerHTML =
+    "<b>Question " + qCount + "</b>" +
+    '<input type="text" class="qt" placeholder="Question text">' +
+    '<input type="text" class="o" placeholder="Option A">' +
+    '<input type="text" class="o" placeholder="Option B">' +
+    '<input type="text" class="o" placeholder="Option C">' +
+    '<input type="text" class="o" placeholder="Option D">' +
+    '<select class="ans"><option value="0">Correct: A</option><option value="1">Correct: B</option>' +
+    '<option value="2">Correct: C</option><option value="3">Correct: D</option></select>';
+  $("tQuestions").appendChild(div);
+}
+$("addQ").onclick = addQuestion;
+
+$("savePaper").onclick = async () => {
+  const msg = $("tMsg");
+  const subject = $("tSubject").value.trim();
+  const questions = [...document.querySelectorAll("#tQuestions .q")].map(q => ({
+    t: q.querySelector(".qt").value.trim(),
+    o: [...q.querySelectorAll(".o")].map(o => o.value.trim()),
+    c: Number(q.querySelector(".ans").value)
+  }));
+
+  if (!subject || questions.length === 0 || questions.some(q => !q.t || q.o.some(o => !o))) {
+    msg.style.color = "red";
+    msg.textContent = "Please enter the subject and fill all questions and options.";
+    return;
+  }
+  try {
+    await addDoc(collection(db, "papers"), { subject, questions, createdAt: serverTimestamp() });
+    msg.style.color = "green";
+    msg.textContent = "Paper saved! Students will see it now.";
+    $("tSubject").value = "";
+    $("tQuestions").innerHTML = "";
+    qCount = 0;
+    addQuestion();
+    loadList();
+  } catch (e) {
+    msg.style.color = "red";
+    msg.textContent = "Error: " + e.message;
+  }
+};
+
+async function loadList() {
+  const box = $("tList");
+  box.textContent = "Loading...";
+  try {
+    const snap = await getDocs(query(collection(db, "papers"), orderBy("createdAt", "asc")));
+    if (snap.empty) { box.textContent = "No papers created yet."; return; }
+    box.innerHTML = "";
+    snap.forEach(d => {
+      const data = d.data();
+      const item = document.createElement("div");
+      item.className = "item";
+      const btn = document.createElement("button");
+      btn.className = "del";
+      btn.textContent = "Delete";
+      btn.onclick = async () => {
+        if (!confirm("Delete this paper?")) return;
+        await deleteDoc(doc(db, "papers", d.id));
+        loadList();
+      };
+      item.appendChild(btn);
+      item.appendChild(document.createTextNode(data.subject + " (" + data.questions.length + " questions)"));
+      box.appendChild(item);
+    });
+  } catch (e) {
+    box.textContent = "Error: " + e.message;
+  }
+}
+
+$("showRes").onclick = async () => {
+  const box = $("tResults");
+  box.textContent = "Loading...";
+  try {
+    const snap = await getDocs(query(collection(db, "results"), orderBy("submittedAt", "desc")));
+    if (snap.empty) { box.textContent = "No results yet."; return; }
+    let rows = "";
+    snap.forEach(d => {
+      const r = d.data();
+      rows += "<tr><td>" + esc(r.name) + "</td><td>" + esc(r.roll) + "</td><td>" +
+        esc(r.subject) + "</td><td>" + r.score + "/" + r.total + "</td></tr>";
+    });
+    box.innerHTML = "<table><tr><th>Name</th><th>Roll</th><th>Paper</th><th>Score</th></tr>" + rows + "</table>";
+  } catch (e) {
+    box.textContent = "Error: " + e.message;
+  }
+};
+</script>
+</body>
+    </html>
